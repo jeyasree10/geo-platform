@@ -2,7 +2,6 @@
 Main FastAPI application for GEO Platform
 Handles API routing and orchestrates analysis workflow
 """
-from fastapi.middleware.cors import CORSMiddleware
 
 
 from fastapi import FastAPI, HTTPException
@@ -67,6 +66,8 @@ async def analyze_website(request: AnalyzeRequest):
     """
     try:
         logger.info(f"Starting analysis for URL: {request.url}")
+        logger.info(f"Question: {request.question}") 
+        
         
         # Step 1: Scrape website content
         logger.info("Scraping website...")
