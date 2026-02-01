@@ -24,11 +24,14 @@ def analyze_content(website_content: str, ai_answer: str, question: str) -> Dict
     Returns:
         Dictionary with analysis results
     """
-    logger.info("Starting content analysis")
+    logger.info(f"Starting content analysis for question: '{question}'")  # ✅ ADD THIS
     
-    # Extract topics from both sources
-    ai_topics = extract_topics(ai_answer, top_n=15)
-    website_topics = extract_topics(website_content, top_n=15)
+    # ✅ CHANGED: Pass question to extract_topics
+    ai_topics = extract_topics(ai_answer, top_n=15, question=question)
+    logger.info(f"✅ Extracted {len(ai_topics)} AI topics: {ai_topics[:5]}")  # ✅ ADD THIS
+    
+    website_topics = extract_topics(website_content, top_n=15, question=question)
+    logger.info(f"✅ Extracted {len(website_topics)} website topics: {website_topics[:5]}")  # ✅ ADD THIS
     
     # Find missing topics (in AI answer but not on website)
     missing_topics = identify_missing_topics(ai_topics, website_topics, website_content)
@@ -51,17 +54,9 @@ def analyze_content(website_content: str, ai_answer: str, question: str) -> Dict
     return results
 
 
-def extract_topics(text: str, top_n: int = 15) -> List[str]:
-    """
-    Extract important topics using TF-IDF-like approach
+def extract_topics(text: str, top_n: int = 15, question: str = "") -> List[str]:
+    """Extract important topics using TF-IDF-like approach"""
     
-    Args:
-        text: Input text
-        top_n: Number of topics to extract
-        
-    Returns:
-        List of topic keywords
-    """
     # Clean and tokenize
     text = text.lower()
     text = re.sub(r'[^\w\s]', ' ', text)
@@ -70,17 +65,20 @@ def extract_topics(text: str, top_n: int = 15) -> List[str]:
     # Stop words to filter out
     stop_words = {
         'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-        'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
-        'this', 'that', 'these', 'those', 'it', 'its', 'can', 'will', 'would',
-        'could', 'should', 'may', 'might', 'must', 'shall', 'have', 'has', 'had',
-        'do', 'does', 'did', 'been', 'being', 'your', 'you', 'they', 'them',
-        'their', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all',
-        'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such'
+        'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+        'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further',
+        'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all',
+        'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+        'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'will',
+        'just', 'should', 'now', 'this', 'that', 'these', 'those', 'it', 'its',
+        'they', 'them', 'their', 'what', 'which', 'who', 'when', 'where', 'why',
+        'how', 'could', 'should', 'might', 'being', 'been', 'have', 'has', 'had',
+        'do', 'does', 'did', 'may', 'must', 'shall', 'have', 'has'
     }
     
     # Filter words
     filtered_words = [
-        w for w in words 
+        w for w in words
         if w not in stop_words and len(w) > 3 and not w.isdigit()
     ]
     
@@ -90,33 +88,39 @@ def extract_topics(text: str, top_n: int = 15) -> List[str]:
     # Extract top N words
     top_words = [word for word, _ in word_freq.most_common(top_n)]
     
-    return top_words
-
-
-def identify_missing_topics(ai_topics: List[str], website_topics: List[str], 
-                           website_content: str) -> List[str]:
-    """
-    Identify topics present in AI answer but missing from website
-    
-    Args:
-        ai_topics: Topics from AI answer
-        website_topics: Topics from website
-        website_content: Full website content for verification
+    # ✅ NEW: Prioritize words from the question
+    if question:
+        question_words = set(w.lower() for w in question.split() if len(w) > 3 and w.lower() not in stop_words)
         
-    Returns:
-        List of missing topics
-    """
+        # Sort: question-related words first, then by frequency
+        top_words = sorted(top_words, key=lambda w: (
+            -(1 if w in question_words else 0),  # Question words first
+            -word_freq.get(w, 0)  # Then by frequency
+        ))
+    
+    return top_words[:top_n]
+def identify_missing_topics(ai_topics: List[str], website_topics: List[str],
+                          website_content: str) -> List[str]:
+    """Identify topics present in AI answer but missing from website"""
+    
     missing = []
     website_content_lower = website_content.lower()
+    website_topics_lower = set(t.lower() for t in website_topics)  # ✅ ADD THIS
     
     for topic in ai_topics:
-        # Check if topic is truly missing (not just in different form)
-        if topic not in website_topics:
+        topic_lower = topic.lower()  # ✅ ADD THIS
+        
+        # ✅ IMPROVED: Check both topic list and content frequency
+        if topic_lower not in website_topics_lower:
             # Double-check it's not just a frequency difference
-            if website_content_lower.count(topic) < 2:
+            if website_content_lower.count(topic_lower) < 2:
                 missing.append(topic)
+                logger.info(f"Missing topic identified: {topic}")  # ✅ ADD DEBUG LOG
     
+    logger.info(f"✅ Found {len(missing)} missing topics")  # ✅ ADD THIS
     return missing[:10]  # Return top 10 missing topics
+
+
 
 
 def detect_answer_structure(answer: str) -> str:
@@ -150,24 +154,23 @@ def detect_answer_structure(answer: str) -> str:
     else:
         return "Mixed Format"
 
-
 def identify_content_gaps(website_content: str, ai_answer: str, question: str) -> List[str]:
-    """
-    Identify specific content gaps between website and AI answer
+    """Identify specific content gaps between website and AI answer"""
     
-    Args:
-        website_content: Scraped website text
-        ai_answer: AI-generated answer
-        question: Original question
-        
-    Returns:
-        List of content gap descriptions
-    """
+    logger.info(f"Identifying content gaps for: '{question}'")  # ✅ ADD THIS
+    
     gaps = []
+    
+    # ✅ ADD: Extract question keywords for context
+    question_keywords = set(w.lower() for w in question.split() if len(w) > 3)
     
     # Check for structural elements in AI answer
     ai_has_examples = 'example' in ai_answer.lower() or 'for instance' in ai_answer.lower()
     website_has_examples = 'example' in website_content.lower() or 'for instance' in website_content.lower()
+    
+    if ai_has_examples and not website_has_examples:
+        gaps.append(f"AI answer includes examples, but website lacks concrete examples about '{question}'")  # ✅ MADE SPECIFIC
+
     
     if ai_has_examples and not website_has_examples:
         gaps.append("AI answer includes examples, but website lacks concrete examples")
@@ -177,14 +180,14 @@ def identify_content_gaps(website_content: str, ai_answer: str, question: str) -
     website_has_numbers = bool(re.search(r'\d+%|\d+ percent|\$\d+', website_content))
     
     if ai_has_numbers and not website_has_numbers:
-        gaps.append("AI answer includes statistics/data, but website lacks quantitative information")
+        gaps.append("AI answer includes statistics/data, but website lacks quantitative information about '" + question + "'")
     
     # Check for step-by-step instructions
     ai_has_steps = bool(re.search(r'\d+\.', ai_answer)) and 'step' in ai_answer.lower()
     website_has_steps = bool(re.search(r'\d+\.', website_content)) and 'step' in website_content.lower()
     
     if ai_has_steps and not website_has_steps:
-        gaps.append("AI answer provides step-by-step guidance, but website lacks structured instructions")
+        gaps.append("AI answer provides step-by-step guidance, but website lacks structured instructions for '" + question + "'")
     
     # Check for best practices section
     if 'best practice' in ai_answer.lower() and 'best practice' not in website_content.lower():
@@ -220,23 +223,26 @@ def extract_recommendations(missing_topics: List[str], content_gaps: List[str],
     Returns:
         List of recommendations
     """
+    logger.info(f"Generating recommendations for: '{question}'")
     recommendations = []
     
     # Topic-based recommendations
     if missing_topics:
         topics_str = ', '.join(missing_topics[:5])
         recommendations.append(
-            f"📝 Add content covering these topics that AI considers important: {topics_str}"
+            f"📝 Add content covering these topics related to '{question}': {topics_str}"
         )
     
     # Format-based recommendations
     if answer_format == "Numbered Steps/List":
         recommendations.append(
-            "📋 Structure your content with numbered steps or lists - AI tends to present this topic in step format"
+            f"📊 Structure your content with numbered steps or lists - AI tends to present '{question}' in step format"
+            
         )
     elif answer_format == "Bullet Points":
         recommendations.append(
-            "• Use bullet points to organize key information - AI responds to this topic with bulleted lists"
+            f"🔹 Use bullet points to organize key information about '{question}' - AI responds to this topic with bulleted lists"
+            
         )
     
     # Gap-based recommendations
